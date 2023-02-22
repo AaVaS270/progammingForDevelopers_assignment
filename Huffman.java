@@ -1,126 +1,105 @@
 package assignments;
-
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.HashMap;
 
 public class Huffman {
-    private static class Node {
-        private final char character;
-        private final int frequency;
-        private final Node leftChild;
-        private final Node rightChild;
 
-        public Node(char character, int frequency, Node leftChild, Node rightChild) {
-            this.character = character;
-            this.frequency = frequency;
-            this.leftChild = leftChild;
-            this.rightChild = rightChild;
+    static class Node implements Comparable<Node> {
+        char ch;
+        int freq;
+        Node left, right;
+        
+        public Node(char ch, int freq, Node left, Node right) {
+            this.ch = ch;
+            this.freq = freq;
+            this.left = left;
+            this.right = right;
         }
-
+        
         public boolean isLeaf() {
-            return leftChild == null && rightChild == null;
+            return (left == null && right == null);
+        }
+        
+        public int compareTo(Node node) {
+            return freq - node.freq;
         }
     }
-
-    public static String encode(String input) {
-        Map<Character, Integer> frequencyMap = new HashMap<>();
-        for (char c : input.toCharArray()) {
-            frequencyMap.put(c, frequencyMap.getOrDefault(c, 0) + 1);
+    
+    // build tree and return root node
+    private static Node buildTree(String text) {
+        // Count frequency of characters
+        HashMap<Character, Integer> freqMap = new HashMap<>();
+        for (char ch : text.toCharArray()) {
+            freqMap.put(ch, freqMap.getOrDefault(ch, 0) + 1);
         }
-
-        PriorityQueue<Node> priorityQueue = new PriorityQueue<>(Comparator.comparingInt(n -> n.frequency));
-        for (Map.Entry<Character, Integer> entry : frequencyMap.entrySet()) {
-            priorityQueue.offer(new Node(entry.getKey(), entry.getValue(), null, null));
+        
+        // Create priority queue and add all leaf nodes to it
+        PriorityQueue<Node> pq = new PriorityQueue<>();
+        for (char ch : freqMap.keySet()) {
+            pq.add(new Node(ch, freqMap.get(ch), null, null));
         }
-
-        while (priorityQueue.size() > 1) {
-            Node leftChild = priorityQueue.poll();
-            Node rightChild = priorityQueue.poll();
-            priorityQueue.offer(new Node('\0', leftChild.frequency + rightChild.frequency, leftChild, rightChild));
+        
+        // Merge two smallest nodes and add back to queue until only one node is left
+        while (pq.size() > 1) {
+            Node left = pq.poll();
+            Node right = pq.poll();
+            Node parent = new Node('\0', left.freq + right.freq, left, right);
+            pq.add(parent);
         }
-
-        Map<Character, String> encodingMap = new HashMap<>();
-        buildEncodingMap(priorityQueue.peek(), "", encodingMap);
-
-        StringBuilder encoded = new StringBuilder();
-        for (char c : input.toCharArray()) {
-            encoded.append(encodingMap.get(c));
-        }
-
-        return encoded.toString();
+        
+        return pq.poll();
     }
-
-    private static void buildEncodingMap(Node node, String encoding, Map<Character, String> encodingMap) {
-        if (node.isLeaf()) {
-            encodingMap.put(node.character, encoding);
+    
+    //  Generate codes and store in a HashMap
+    private static void generateCodes(Node root, String code, HashMap<Character, String> codeMap) {
+        if (root.isLeaf()) {
+            codeMap.put(root.ch, code);
         } else {
-            buildEncodingMap(node.leftChild, encoding + "0", encodingMap);
-            buildEncodingMap(node.rightChild, encoding + "1", encodingMap);
+            generateCodes(root.left, code + "0", codeMap);
+            generateCodes(root.right, code + "1", codeMap);
         }
     }
-
-    public static String decode(String input, Node root) {
-        StringBuilder decoded = new StringBuilder();
-        Node current = root;
-        for (char c : input.toCharArray()) {
-            if (c == '0') {
-                current = current.leftChild;
+    
+    // Encode input text using 
+    public static String encode(String text) {
+        Node root = buildTree(text);
+        HashMap<Character, String> codeMap = new HashMap<>();
+        generateCodes(root, "", codeMap);
+        
+        StringBuilder sb = new StringBuilder();
+        for (char ch : text.toCharArray()) {
+            sb.append(codeMap.get(ch));
+        }
+        
+        return sb.toString();
+    }
+    
+    public static String decode(String encodedString, Node root) {
+        StringBuilder sb = new StringBuilder();
+        Node curr = root;
+        for (char ch : encodedString.toCharArray()) {
+            if (ch == '0') {
+                curr = curr.left;
             } else {
-                current = current.rightChild;
+                curr = curr.right;
             }
-            if (current.isLeaf()) {
-                decoded.append(current.character);
-                current = root;
+            if (curr.isLeaf()) {
+                sb.append(curr.ch);
+                curr = root;
             }
         }
-        return decoded.toString();
+        return sb.toString();
     }
     
     public static void main(String[] args) {
-        String input = "Hello, world!";
-        String encoded = Huffman.encode(input);
-
-        System.out.println("Input: " + input);
-        System.out.println("Encoded: " + encoded);
-
-        Node root = decodeTree(encoded);
-        String decoded = Huffman.decode(encoded, root);
-
-        System.out.println("Decoded: " + decoded);
-    }
-
-    private static Node decodeTree(String encodedTree) {
-        int i = 0;
-        Node root = null;
-        Node current = null;
-        while (i < encodedTree.length()) {
-            char c = encodedTree.charAt(i);
-            if (c == '0') {
-                if (current == null) {
-                    current = new Node('\0', 0, null, null);
-                    if (root == null) {
-                        root = current;
-                    }
-                } else {
-                    current.leftChild = new Node('\0', 0, null, null);
-                    current = current.leftChild;
-                }
-            } else {
-                if (current == null) {
-                    current = new Node('\0', 0, null, null);
-                    if (root == null) {
-                        root = current;
-                    }
-                } else {
-                    current.rightChild = new Node('\0', 0, null, null);
-                    current = current.rightChild;
-                }
-            }
-            i++;
-        }
-        return root;
+        String text = "Dustin Porier";
+        
+        String encodedString = Huffman.encode(text);
+        System.out.println("Encoded string: " + encodedString);
+        
+        Node root = Huffman.buildTree(text);
+        String decodedString = Huffman.decode(encodedString, root);
+        System.out.println("Decoded string: " + decodedString);
     }
 
 }
