@@ -1,98 +1,93 @@
 package assignments;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URL;
+import java.net.URLConnection;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class WebCrawler {
-    
-    private final int MAX_PAGES_TO_SEARCH = 100;
-    private Set<URL> visitedPages;
-    private Queue<URL> pagesToVisit;
-    private ExecutorService executor;
-    
-    public WebCrawler() {
-        visitedPages = new HashSet<URL>();
-        pagesToVisit = new LinkedList<URL>();
-        executor = Executors.newFixedThreadPool(4);
-    }
-    
-    public void search(String url, String searchWord) {
-        URL startingUrl;
-        try {
-            startingUrl = new URL(url);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
-        
-        pagesToVisit.add(startingUrl);
-        while (visitedPages.size() < MAX_PAGES_TO_SEARCH && !pagesToVisit.isEmpty()) {
-            URL currentUrl = pagesToVisit.poll();
-            executor.execute(new PageSearchTask(currentUrl, searchWord));
-            visitedPages.add(currentUrl);
-            System.out.println("Visited page " + currentUrl);
-            findLinks(currentUrl);
-        }
-        
-        executor.shutdown();
-        try {
-            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    
-    private void findLinks(URL url) {
-        try {
-            Document doc = Jsoup.connect(url.toString()).get();
-            Elements links = doc.select("a[href]");
-            for (Element link : links) {
-                String linkUrl = link.absUrl("href");
-                URL newUrl = new URL(linkUrl);
-                if (!visitedPages.contains(newUrl)) {
-                    pagesToVisit.add(newUrl);
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-    
-    static class PageSearchTask implements Runnable {
-        private URL url;
-        private String searchWord;
-        
-        public PageSearchTask(URL url, String searchWord) {
-            this.url = url;
-            this.searchWord = searchWord;
-        }
-        
-        public void run() {
-            try {
-                Document doc = Jsoup.connect(url.toString()).get();
-                String text = doc.body().text();
-                if (text.toLowerCase().contains(searchWord.toLowerCase())) {
-                    System.out.println(searchWord + " found on page " + url);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-    
-    public static void main(String[] args) {
-        WebCrawler crawler = new WebCrawler();
-        crawler.search("http://www.example.com", "example");
-    }
+	private static final int NUM_THREADS = 10;
+	private static final int MAX_PAGES = 100;
+	private final Set<URL> visited;
+	private final Queue<URL> queue;
+
+	public WebCrawler(URL startUrl) {
+	    visited = new HashSet<>();
+	    queue = new LinkedList<>();
+	    queue.add(startUrl);
+	}
+
+	public void start() {
+	    ExecutorService executor = Executors.newFixedThreadPool(NUM_THREADS);
+	    for (int i = 0; i < NUM_THREADS; i++) {
+	        executor.execute(new CrawlerTask());
+	    }
+	    executor.shutdown();
+	    while (!executor.isTerminated()) {
+	    }
+	}
+
+	private class CrawlerTask implements Runnable {
+	    @Override
+	    public void run() {
+	        while (!queue.isEmpty() && visited.size() < MAX_PAGES) {
+	            URL url = queue.poll();
+	            if (visited.contains(url)) {
+	                continue;
+	            }
+	            visited.add(url);
+	            try {
+	                String pageContent = getPageContent(url);
+	                System.out.println("Visited page " + url);
+	                Set<URL> links = getLinks(pageContent);
+	                for (URL link : links) {
+	                    if (!visited.contains(link)) {
+	                        queue.add(link);
+	                    }
+	                }
+	            } catch (IOException e) {
+	                System.err.println("Failed to crawl " + url + ": " + e.getMessage());
+	            }
+	        }
+	    }
+
+	    private String getPageContent(URL url) throws IOException {
+	         URLConnection connection = url.openConnection();
+	         BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+	         StringBuilder builder = new StringBuilder();
+	         String line;
+	         while ((line = reader.readLine()) != null) {
+	             builder.append(line);
+	         }
+	         reader.close();
+	         return builder.toString();
+	    }
+
+	    private Set<URL> getLinks(String pageContent) throws IOException {
+	         Pattern pattern = Pattern.compile("<a\\s+href=\"([^\"]+)\"\\s*>");
+	         Matcher matcher = pattern.matcher(pageContent);
+	         Set<URL> links = new HashSet<>();
+	         while (matcher.find()) {
+	             String link = matcher.group(1);
+	             links.add(new URL(link));
+	         }
+	         return links;
+	    }
+	}
+
+	public static void main(String[] args) throws Exception {
+	    URL startUrl = new URL("https://www.example.com/");
+	    WebCrawler crawler = new WebCrawler(startUrl);
+	    crawler.start();
+	}
+
 }
